@@ -17,6 +17,7 @@ use syntax::{
     ast::{self, HasModuleItem, HasName},
 };
 use thin_vec::ThinVec;
+use triomphe::Arc;
 
 use crate::{
     AssocItemId, AstIdWithPath, ConstLoc, FunctionId, FunctionLoc, ImplId, ItemContainerId,
@@ -199,7 +200,7 @@ impl<'db> AssocItemCollector<'db> {
                         self.module_id,
                         InFile::new(self.file_id, ast_id.erase()),
                         cfg.0,
-                        self.cfg_options.clone(),
+                        Arc::new(self.cfg_options.clone()),
                     ));
                     return;
                 }

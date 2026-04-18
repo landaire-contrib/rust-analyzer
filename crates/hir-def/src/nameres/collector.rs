@@ -100,6 +100,7 @@ pub(super) fn collect_defs(
         unresolved_macros: Vec::new(),
         mod_dirs: FxHashMap::default(),
         cfg_options,
+        cfg_options_arc: std::cell::OnceCell::new(),
         proc_macros,
         from_glob_import: Default::default(),
         skip_attrs: Default::default(),
@@ -248,6 +249,10 @@ struct DefCollector<'db> {
     unresolved_extern_crates: FxHashSet<Name>,
     mod_dirs: FxHashMap<ModuleId, ModDir>,
     cfg_options: &'db CfgOptions,
+    /// Lazily-built `Arc<CfgOptions>` shared across every `UnconfiguredCode`
+    /// diagnostic emitted by this collector so we don't re-clone the backing
+    /// `FxHashSet<CfgAtom>` once per `#[cfg]`-disabled item.
+    cfg_options_arc: std::cell::OnceCell<Arc<CfgOptions>>,
     /// List of procedural macros defined by this crate. This is read from the dynamic library
     /// built by the build system, and is the list of proc-macros we can actually expand. It is
     /// empty when proc-macro support is disabled (in which case we still do name resolution for
@@ -371,11 +376,15 @@ impl<'db> DefCollector<'db> {
 
         if let AttrsOrCfg::CfgDisabled(attrs) = item_tree.top_level_attrs() {
             let (cfg_expr, _) = &**attrs;
+            let opts = self
+                .cfg_options_arc
+                .get_or_init(|| Arc::new(self.cfg_options.clone()))
+                .clone();
             self.def_map.diagnostics.push(DefDiagnostic::unconfigured_code(
                 self.def_map.root,
                 InFile::new(file_id.into(), ROOT_ERASED_FILE_AST_ID),
                 cfg_expr.clone(),
-                self.cfg_options.clone(),
+                opts,
             ));
             return;
         }
@@ -2763,11 +2772,16 @@ impl ModCollector<'_, '_> {
     }
 
     fn emit_unconfigured_diagnostic(&mut self, ast_id: ErasedAstId, cfg: &CfgExpr) {
+        let opts = self
+            .def_collector
+            .cfg_options_arc
+            .get_or_init(|| Arc::new(self.def_collector.cfg_options.clone()))
+            .clone();
         self.def_collector.def_map.diagnostics.push(DefDiagnostic::unconfigured_code(
             self.module_id,
             ast_id,
             cfg.clone(),
-            self.def_collector.cfg_options.clone(),
+            opts,
         ));
     }
 

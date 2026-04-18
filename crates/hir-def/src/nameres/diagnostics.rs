@@ -6,6 +6,7 @@ use cfg::{CfgExpr, CfgOptions};
 use hir_expand::{ErasedAstId, ExpandErrorKind, MacroCallKind, attrs::AttrId, mod_path::ModPath};
 use la_arena::Idx;
 use syntax::ast;
+use triomphe::Arc;
 
 use crate::{AstId, nameres::ModuleId};
 
@@ -14,7 +15,10 @@ pub enum DefDiagnosticKind {
     UnresolvedModule { ast: AstId<ast::Module>, candidates: Box<[String]> },
     UnresolvedExternCrate { ast: AstId<ast::ExternCrate> },
     UnresolvedImport { id: AstId<ast::Use>, index: Idx<ast::UseTree> },
-    UnconfiguredCode { ast_id: ErasedAstId, cfg: CfgExpr, opts: CfgOptions },
+    /// `opts` is `Arc`-shared so that every diagnostic produced within the
+    /// same crate's `DefCollector` points at the one copy of the crate's
+    /// `CfgOptions` rather than cloning the `FxHashSet` behind it per hit.
+    UnconfiguredCode { ast_id: ErasedAstId, cfg: CfgExpr, opts: Arc<CfgOptions> },
     UnresolvedMacroCall { ast: MacroCallKind, path: ModPath },
     UnimplementedBuiltinMacro { ast: AstId<ast::Macro> },
     InvalidDeriveTarget { ast: AstId<ast::Item>, id: AttrId },
@@ -90,7 +94,7 @@ impl DefDiagnostic {
         container: ModuleId,
         ast_id: ErasedAstId,
         cfg: CfgExpr,
-        opts: CfgOptions,
+        opts: Arc<CfgOptions>,
     ) -> Self {
         Self {
             in_module: container,

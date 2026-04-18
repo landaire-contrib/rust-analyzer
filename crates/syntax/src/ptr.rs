@@ -59,8 +59,24 @@ impl<N: AstNode> AstPtr<N> {
         AstPtr { raw: SyntaxNodePtr::new(node.syntax()), _ty: PhantomData }
     }
 
+    /// Like [`Self::new`], but skips the immutability assertion. The caller
+    /// guarantees no mutations will shift the node at `node.text_range()`
+    /// before the pointer is resolved. See [`rowan::ast::SyntaxNodePtr::new_in_mutable_tree`].
+    pub fn new_in_mutable_tree(node: &N) -> AstPtr<N> {
+        AstPtr {
+            raw: SyntaxNodePtr::new_in_mutable_tree(node.syntax()),
+            _ty: PhantomData,
+        }
+    }
+
     pub fn to_node(&self, root: &SyntaxNode) -> N {
         let syntax_node = self.raw.to_node(root);
+        N::cast(syntax_node).unwrap()
+    }
+
+    /// Like [`Self::to_node`], but skips the immutability assertion on `root`.
+    pub fn to_node_in_mutable_tree(&self, root: &SyntaxNode) -> N {
+        let syntax_node = self.raw.to_node_in_mutable_tree(root);
         N::cast(syntax_node).unwrap()
     }
 

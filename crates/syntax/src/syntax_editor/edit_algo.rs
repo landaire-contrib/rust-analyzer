@@ -549,7 +549,11 @@ impl TreeMutator {
     }
 
     fn make_syntax_mut(&self, node: &SyntaxNode) -> SyntaxNode {
+        // `self.mutable_clone` is a fresh `clone_for_update` of `self.immutable`.
+        // No edits have landed on it yet at this point, so text ranges still
+        // line up with `self.immutable`. This lets us resolve the pointer
+        // against the mutable clone without asserting immutability.
         let ptr = SyntaxNodePtr::new(node);
-        ptr.to_node(&self.mutable_clone)
+        ptr.to_node_in_mutable_tree(&self.mutable_clone)
     }
 }

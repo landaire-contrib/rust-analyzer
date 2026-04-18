@@ -434,7 +434,13 @@ impl SourceToDefCtx<'_, '_> {
         src: InFile<&Ast>,
         key: Key<Ast, ID>,
     ) -> Option<ID> {
-        self.dyn_map(src)?[key].get(&AstPtr::new(src.value)).copied()
+        // The pointer built here is used only as a lookup key. Mutability of
+        // `src.value`'s tree doesn't affect lookup correctness so long as
+        // kind+range still matches the key that was inserted (which it does
+        // when the tree is mutable-but-unmodified). Callers like
+        // `Semantics::expand_attr_macro` hand us nodes from a `clone_for_update`
+        // tree, which is why we use the mutable-tree-friendly constructor.
+        self.dyn_map(src)?[key].get(&AstPtr::new_in_mutable_tree(src.value)).copied()
     }
 
     fn dyn_map<Ast: AstNode + 'static>(&mut self, src: InFile<&Ast>) -> Option<&DynMap> {

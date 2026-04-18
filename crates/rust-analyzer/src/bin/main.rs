@@ -51,6 +51,12 @@ fn actual_main() -> anyhow::Result<ExitCode> {
         eprintln!("Failed to setup logging: {e:#}");
     }
 
+    #[cfg(feature = "dhat")]
+    let _dhat_profiler = env::var("RA_DHAT_OUTPUT").ok().map(|path| {
+        eprintln!("dhat: writing heap profile to {path}");
+        dhat::Profiler::builder().file_name(&path).build()
+    });
+
     let verbosity = flags.verbosity();
 
     match flags.subcommand {

@@ -165,7 +165,9 @@ pub struct UndeclaredLabel {
 pub struct InactiveCode {
     pub node: InFile<SyntaxNodePtr>,
     pub cfg: CfgExpr,
-    pub opts: CfgOptions,
+    /// Shared `Arc` so that the crate-wide `CfgOptions` isn't cloned per hit
+    /// (there can be thousands of these in a big workspace).
+    pub opts: Arc<CfgOptions>,
 }
 
 #[derive(Debug, Clone, Eq, PartialEq)]

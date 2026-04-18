@@ -133,7 +133,11 @@ fn lazy_expand(
         MacroCallKind::FnLike { ast_id, expand_to, eager: None },
         call_site,
     );
-    eager_callback(ast_id.map(|ast_id| (AstPtr::new(macro_call), ast_id)), id);
+    // `macro_call` lives in the `clone_for_update` tree owned by
+    // `eager_macro_recur` (see `original` there). The walk records pointers
+    // before any `ted::replace` runs, so text ranges still match the
+    // immutable original the pointer will later be resolved against.
+    eager_callback(ast_id.map(|ast_id| (AstPtr::new_in_mutable_tree(macro_call), ast_id)), id);
 
     db.parse_macro_expansion(id).map(|parse| (InFile::new(id.into(), parse.0), parse.1))
 }
@@ -202,7 +206,14 @@ fn eager_macro_recur(
                 continue;
             }
         };
-        let ast_id = db.ast_id_map(curr.file_id).ast_id(&call);
+        // `call` is in `original` (a `clone_for_update` of `curr.value`)
+        // and `ast_id_map(curr.file_id)` keys on positions in the immutable
+        // `curr.value`. No `ted::replace` has run yet, so text ranges still
+        // match. `ast_id_for_ptr` takes a prebuilt pointer, letting us use
+        // the mutable-tree-friendly constructor here.
+        let ast_id = db
+            .ast_id_map(curr.file_id)
+            .ast_id_for_ptr(AstPtr::new_in_mutable_tree(&call));
         let ExpandResult { value, err } = match def.kind {
             MacroDefKind::BuiltInEager(..) => {
                 let ExpandResult { value, err } = expand_eager_macro_input(
@@ -217,8 +228,13 @@ fn eager_macro_recur(
                 );
                 match value {
                     Some(call_id) => {
+                        // `call` lives in the `clone_for_update` of `curr.value`
+                        // (`original`). No `ted::replace` has run yet at this
+                        // point in the walk, so `call`'s text range still
+                        // matches the immutable `curr.value`.
                         eager_callback(
-                            curr.with_value(ast_id).map(|ast_id| (AstPtr::new(&call), ast_id)),
+                            curr.with_value(ast_id)
+                                .map(|ast_id| (AstPtr::new_in_mutable_tree(&call), ast_id)),
                             call_id,
                         );
                         let ExpandResult { value: (parse, map), err: err2 } =

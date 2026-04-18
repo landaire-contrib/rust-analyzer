@@ -775,7 +775,7 @@ impl Module {
                                                 ast_id_map.get(diag.ast_id).syntax_node_ptr(),
                                             ),
                                             cfg: diag.cfg.clone(),
-                                            opts: diag.opts.clone(),
+                                            opts: triomphe::Arc::new(diag.opts.clone()),
                                         }
                                         .into(),
                                     );
@@ -2350,9 +2350,12 @@ fn expr_store_diagnostics<'db>(
 ) {
     for diag in source_map.diagnostics() {
         acc.push(match diag {
-            ExpressionStoreDiagnostics::InactiveCode { node, cfg, opts } => {
-                InactiveCode { node: *node, cfg: cfg.clone(), opts: opts.clone() }.into()
+            ExpressionStoreDiagnostics::InactiveCode { node, cfg, opts } => InactiveCode {
+                node: *node,
+                cfg: cfg.clone(),
+                opts: triomphe::Arc::new(opts.clone()),
             }
+            .into(),
             ExpressionStoreDiagnostics::UnresolvedMacroCall { node, path } => UnresolvedMacroCall {
                 range: node.map(|ptr| ptr.text_range()),
                 path: path.clone(),
