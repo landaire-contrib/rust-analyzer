@@ -187,7 +187,14 @@ pub(crate) fn convert_closure_to_fn(acc: &mut Assists, ctx: &AssistContext<'_>) 
                     }
 
                     let capture_usage_source = capture_usage.source();
-                    let capture_usage_source = capture_usage_source.to_node(&body_root);
+                    // `body_root` is a `clone_for_update` of the original body
+                    // tree. `capture_usage_source` was computed against that
+                    // original before `clone_for_update`, so its (kind, range)
+                    // still identifies the matching node in the mutable clone
+                    // at this point in the assist (replacements are gathered
+                    // below and applied afterwards).
+                    let capture_usage_source =
+                        capture_usage_source.to_node_in_mutable_tree(&body_root);
                     let expr = match capture_usage_source {
                         Either::Left(expr) => expr,
                         Either::Right(pat) => {

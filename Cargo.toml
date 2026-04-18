@@ -35,7 +35,7 @@ inherits = "release"
 debug = 2
 
 [patch.'crates-io']
-# rowan = { path = "../rowan" }
+rowan = { path = "../rowan" }
 
 # line-index = { path = "lib/line-index" }
 # la-arena = { path = "lib/la-arena" }
@@ -132,7 +132,7 @@ process-wrap = { version = "8.2.1", features = ["std"] }
 pulldown-cmark-to-cmark = "10.0.4"
 pulldown-cmark = { version = "0.9.6", default-features = false }
 rayon = "1.10.0"
-rowan = "=0.15.18"
+rowan = "0.16"
 # Ideally we'd not enable the macros feature but unfortunately the `tracked` attribute does not work
 # on impls without it
 salsa = { version = "0.25.2", default-features = false, features = [

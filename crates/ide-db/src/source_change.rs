@@ -257,8 +257,14 @@ impl TreeMutator {
     }
 
     pub fn make_syntax_mut(&self, node: &SyntaxNode) -> SyntaxNode {
+        // `self.mutable_clone` is a fresh `clone_for_update` of
+        // `self.immutable`. No edits have landed yet when this is first
+        // invoked, so `node`'s text range still identifies the matching
+        // node in the clone. Later calls within the same assist may have
+        // performed edits elsewhere in the clone, but the caller passes
+        // nodes that have not yet been mutated themselves.
         let ptr = SyntaxNodePtr::new(node);
-        ptr.to_node(&self.mutable_clone)
+        ptr.to_node_in_mutable_tree(&self.mutable_clone)
     }
 }
 
