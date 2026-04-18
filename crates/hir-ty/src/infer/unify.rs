@@ -1,6 +1,6 @@
 //! Unification and canonicalization logic.
 
-use std::fmt;
+use std::{fmt, ops::ControlFlow};
 
 use base_db::Crate;
 use hir_def::{AdtId, ExpressionStoreOwnerId, GenericParamId};
@@ -8,7 +8,8 @@ use hir_expand::name::Name;
 use intern::sym;
 use rustc_hash::FxHashSet;
 use rustc_type_ir::{
-    TyVid, TypeFoldable, TypeVisitableExt, UpcastFrom,
+    TyVid, TypeFoldable, TypeSuperVisitable, TypeVisitable, TypeVisitableExt, TypeVisitor,
+    UpcastFrom,
     inherent::{Const as _, GenericArg as _, IntoKind, Ty as _},
     solve::Certainty,
 };
@@ -41,6 +42,39 @@ struct NestedObligationsForSelfTy<'a, 'db> {
     self_ty: TyVid,
     root_cause: &'a ObligationCause,
     obligations_for_self_ty: &'a mut SmallVec<[Obligation<'db, Predicate<'db>>; 4]>,
+}
+
+/// Walks `predicate` looking for any `TyKind::Infer(TyVar(v))` whose root
+/// inference variable equals `target_root`. Returns `true` on the first hit;
+/// otherwise returns `false` after visiting the whole predicate.
+///
+/// This is a conservative check used to skip proof-tree construction in
+/// `obligations_for_self_ty` when the predicate cannot possibly contribute a
+/// bound on `target_root`. Because nested obligations are produced by
+/// substituting the predicate's generic args into impl where-clauses, any
+/// variable mentioned by a nested obligation must already occur syntactically
+/// (after root-var resolution) at the top level.
+fn predicate_mentions_root_var<'db>(
+    infer_ctxt: &InferCtxt<'db>,
+    predicate: Predicate<'db>,
+    target_root: TyVid,
+) -> bool {
+    struct Finder<'a, 'db> {
+        infer_ctxt: &'a InferCtxt<'db>,
+        target_root: TyVid,
+    }
+    impl<'a, 'db> TypeVisitor<DbInterner<'db>> for Finder<'a, 'db> {
+        type Result = ControlFlow<()>;
+        fn visit_ty(&mut self, ty: Ty<'db>) -> Self::Result {
+            if let TyKind::Infer(rustc_type_ir::TyVar(vid)) = ty.kind()
+                && self.infer_ctxt.root_var(vid) == self.target_root
+            {
+                return ControlFlow::Break(());
+            }
+            ty.super_visit_with(self)
+        }
+    }
+    predicate.visit_with(&mut Finder { infer_ctxt, target_root }).is_break()
 }
 
 impl<'a, 'db> ProofTreeVisitor<'db> for NestedObligationsForSelfTy<'a, 'db> {
@@ -192,7 +226,24 @@ impl<'db> InferenceTable<'db> {
     ) -> SmallVec<[Obligation<'db, Predicate<'db>>; 4]> {
         let obligations = self.fulfillment_cx.pending_obligations();
         let mut obligations_for_self_ty = SmallVec::new();
+        let self_root = self.infer_ctxt.root_var(self_ty);
         for obligation in obligations {
+            // Fast path: if the obligation's predicate doesn't mention any
+            // inference variable at all, or mentions none that root to
+            // `self_ty`, it can't contribute nested obligations about
+            // `self_ty` either — building the full proof tree is pure waste.
+            //
+            // Nested goals substitute the top-level generic args into an
+            // impl's where-clauses, so anything `self_ty` could reach must
+            // already appear (syntactically, after root-var resolution) at
+            // the top level.
+            if !obligation.predicate.has_infer_types() {
+                continue;
+            }
+            if !predicate_mentions_root_var(&self.infer_ctxt, obligation.predicate, self_root) {
+                continue;
+            }
+
             let mut visitor = NestedObligationsForSelfTy {
                 ctx: self,
                 self_ty,
